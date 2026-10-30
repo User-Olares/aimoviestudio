@@ -73,6 +73,10 @@ def get_video_driver(model_id: str) -> Optional[VideoDriver]:
         if model_id not in _comfy_video_cache:
             from .comfy_video import ComfyVideoDriver
             driver = ComfyVideoDriver(model_id=model_id)
+            # Olares patch: ComfyVideoDriver has no MODEL_INFO dict, so custom
+            # video workflows raised AttributeError and never reached ComfyUI.
+            if not isinstance(getattr(driver, "MODEL_INFO", None), dict):
+                driver.MODEL_INFO = {}
             driver.MODEL_INFO[model_id] = {
                 "name": custom["display_name"],
                 "workflow_t2i": model_id,
