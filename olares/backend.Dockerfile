@@ -13,7 +13,12 @@ ENV HOME=/app \
     XDG_CACHE_HOME=/app/.cache \
     MPLCONFIGDIR=/app/.cache/matplotlib
 
-RUN mkdir -p /app/assets /app/core/workflows /app/.cache \
+# The persistent userspace volume is mounted over /app/core/workflows at
+# runtime and starts empty, which would hide the workflow templates baked into
+# the image. Keep a pristine copy outside that path so the container entrypoint
+# can seed the volume on boot (see the chart's backend command).
+RUN cp -a /app/core/workflows /app/core/workflows.defaults \
+ && mkdir -p /app/assets /app/core/workflows /app/.cache \
  && chown -R 1000:1000 /app
 
 USER 1000:1000
