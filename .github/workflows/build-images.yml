@@ -1,0 +1,58 @@
+name: build-and-push
+
+# Construye las dos imágenes en amd64 y las publica en GHCR con GITHUB_TOKEN.
+# Al publicarse desde un repo público, los paquetes quedan de lectura pública:
+# el nodo de Olares puede descargarlos sin credenciales.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**/*.md']
+  workflow_dispatch:
+
+env:
+  VERSION: 2.0.1
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - svc: backend
+            context: backend
+          - svc: frontend
+            context: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build upstream stage
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            --build-arg BACKEND_URL=http://127.0.0.1:8001 \
+            -t aimoviestudio-${{ matrix.svc }}:base \
+            ${{ matrix.context }}
+
+      - name: Build Olares layer (uid 1000 + labels)
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            --build-arg BASE_IMAGE=aimoviestudio-${{ matrix.svc }}:base \
+            -f olares/${{ matrix.svc }}.Dockerfile \
+            -t ghcr.io/${{ github.repository_owner }}/aimoviestudio-${{ matrix.svc }}:${{ env.VERSION }} \
+            .
+
+      - name: Push
+        run: |
+          docker push ghcr.io/${{ github.repository_owner }}/aimoviestudio-${{ matrix.svc }}:${{ env.VERSION }}
