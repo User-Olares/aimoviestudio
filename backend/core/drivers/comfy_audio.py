@@ -175,6 +175,14 @@ class ComfyAudioDriver(AudioDriver):
             elif class_type == "SaveAudioMP3":
                 inputs["filename_prefix"] = f"audio/{clip_name}"
 
+            # --- Chatterbox (nodo real; el template original venía con class_type null) ---
+            elif class_type in ("ChatterboxMTLTTS", "ChatterboxTTS"):
+                if request.text:
+                    inputs["text"] = request.text
+                if class_type == "ChatterboxMTLTTS" and request.language:
+                    inputs["language"] = str(request.language).split("-")[0].lower()
+                inputs["seed"] = seed
+
             elif class_type == "LoadAudio":
                 # Inject the uploaded reference audio filename
                 if comfy_reference_filename:

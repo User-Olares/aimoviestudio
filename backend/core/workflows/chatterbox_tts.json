@@ -1,42 +1,34 @@
 {
-  "4": {
+  "1": {
+    "class_type": "ChatterboxMTLTTS",
     "inputs": {
-      "UNKNOWN": "This is Chatterbox—and it just recreated my voice from a nine-second recording.\n\nGive it a shot with your own voice and hear the results for yourself.",
-      "UNKNOWN_1": 0.5,
-      "UNKNOWN_2": 0.5,
-      "UNKNOWN_3": 0.8,
-      "UNKNOWN_4": 390519100,
-      "UNKNOWN_5": "randomize",
-      "UNKNOWN_6": false,
-      "UNKNOWN_7": false,
-      "audio_prompt": [
-        "6",
-        0
-      ]
-    },
-    "_meta": {}
-  },
-  "5": {
-    "inputs": {
-      "filename_prefix": "audio/chatterbox_tts",
-      "quality": "V0",
-      "audio": [
-        "4",
-        0
-      ]
-    },
-    "class_type": "SaveAudioMP3",
-    "_meta": {
-      "title": "Save Audio (MP3) (DEPRECATED)"
+      "model_pack_name": "chatterbox",
+      "model_version": "t3_mtl23ls_v3.safetensors",
+      "language": "es",
+      "text": "TEXT_PLACEHOLDER",
+      "exaggeration": 0.5,
+      "temperature": 0.8,
+      "cfg_weight": 0.5,
+      "repetition_penalty": 1.2,
+      "min_p": 0.05,
+      "top_p": 1.0,
+      "seed": 0,
+      "use_watermark": false,
+      "device": "auto",
+      "dtype": "auto",
+      "attention_mode": "auto",
+      "crash_protection_template": ""
     }
   },
-  "6": {
+  "2": {
+    "class_type": "SaveAudioMP3",
     "inputs": {
-      "audio": "chatterbox_input_target_voice.mp3"
-    },
-    "class_type": "LoadAudio",
-    "_meta": {
-      "title": "Load Audio"
+      "audio": [
+        "1",
+        0
+      ],
+      "filename_prefix": "audio/chatterbox_tts",
+      "quality": "V0"
     }
   }
 }
