@@ -50,6 +50,11 @@ class ComfyAudioDriver(AudioDriver):
             "workflow": "chatterbox_tts",
             "kind": "tts",
         },
+        "chatterbox_tts_latam": {
+            "name": "Chatterbox TTS Espanol Latino (ComfyUI)",
+            "workflow": "chatterbox_tts_latam",
+            "kind": "tts",
+        },
         "hunyuan_foley": {
             "name": "HunyuanVideo Foley (ComfyUI)",
             "workflow": "hunyuan_foley",
