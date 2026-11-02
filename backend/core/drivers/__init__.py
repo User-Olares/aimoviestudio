@@ -103,7 +103,7 @@ def get_audio_driver(model_id: str = "fish_speech") -> Optional[AudioDriver]:
     if model_id == "fish_speech":
         from .fish_speech import FishSpeechDriver
         return FishSpeechDriver()
-    if model_id in ("comfy_audio", "minimax_music3", "chatterbox_tts", "hunyuan_foley"):
+    if model_id in ("comfy_audio", "minimax_music3", "chatterbox_tts", "chatterbox_tts_latam", "hunyuan_foley"):
         from .comfy_audio import ComfyAudioDriver
         # Olares patch: sin cache cada llamada creaba un driver nuevo y su
         # diccionario de jobs quedaba vacío, así que /audio/status siempre
@@ -332,6 +332,12 @@ def list_audio_drivers() -> List[DriverInfo]:
     drivers.append(DriverInfo(
         driver_id="chatterbox_tts",
         display_name="Chatterbox TTS (ComfyUI)",
+        category=DriverCategory.LOCAL,
+        supported_features=["tts", "voice_cloning"],
+    ))
+    drivers.append(DriverInfo(
+        driver_id="chatterbox_tts_latam",
+        display_name="Chatterbox TTS Español Latino (ComfyUI)",
         category=DriverCategory.LOCAL,
         supported_features=["tts", "voice_cloning"],
     ))

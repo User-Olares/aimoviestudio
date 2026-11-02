@@ -4,7 +4,7 @@ FROM ${BASE_IMAGE}
 
 LABEL org.opencontainers.image.source="https://github.com/User-Olares/aimoviestudio" \
       org.opencontainers.image.title="AI Movie Studio 2 frontend" \
-      org.opencontainers.image.version="2.0.6"
+      org.opencontainers.image.version="2.0.7"
 
 ENV HOME=/app \
     NEXT_TELEMETRY_DISABLED=1
