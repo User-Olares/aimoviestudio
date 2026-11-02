@@ -14,6 +14,7 @@ from .base import (
 
 # Singleton cache for local ComfyUI drivers so jobs persist across requests
 _comfy_image_cache: Dict[str, ImageDriver] = {}
+_comfy_audio_cache: Dict[str, AudioDriver] = {}
 _comfy_video_cache: Dict[str, object] = {}
 
 
@@ -104,7 +105,12 @@ def get_audio_driver(model_id: str = "fish_speech") -> Optional[AudioDriver]:
         return FishSpeechDriver()
     if model_id in ("comfy_audio", "minimax_music3", "chatterbox_tts", "hunyuan_foley"):
         from .comfy_audio import ComfyAudioDriver
-        return ComfyAudioDriver(model_id=model_id)
+        # Olares patch: sin cache cada llamada creaba un driver nuevo y su
+        # diccionario de jobs quedaba vacío, así que /audio/status siempre
+        # devolvía "Audio job not found".
+        if model_id not in _comfy_audio_cache:
+            _comfy_audio_cache[model_id] = ComfyAudioDriver(model_id=model_id)
+        return _comfy_audio_cache[model_id]
     if model_id in ("fal_music", "fal_foley", "fal_elevenlabs", "fal_chatterbox_hd", "fal_chatterbox"):
         from .fal_audio import FalAudioDriver
         return FalAudioDriver(model_id=model_id)
