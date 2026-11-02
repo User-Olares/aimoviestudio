@@ -143,6 +143,9 @@ async def start_audio_job(req: AudioJobRequest):
         job["updated_at"] = datetime.utcnow().isoformat()
 
         response = await driver.generate_speech(gen_req)
+        # Olares patch: el driver (ComfyUI) usa su propio job_id; sin guardarlo
+        # /status consultaba un id desconocido y respondía "Audio job not found".
+        job["driver_job_id"] = getattr(response, "job_id", job_id) or job_id
 
         # Check if the driver returned a processing status (e.g. ComfyUI)
         # In this case, the job stays in "processing" and is polled via /status
@@ -260,7 +263,7 @@ async def get_audio_job_status(job_id: str):
         if driver:
             _audio_status_inflight.add(job_id)
             try:
-                response = await driver.check_status(job_id)
+                response = await driver.check_status(job.get("driver_job_id") or job_id)
                 if response.status.value == "completed":
                     # Transition to "finalizing" before the download so a
                     # concurrent poll doesn't re-enter this block and download
