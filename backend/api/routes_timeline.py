@@ -150,6 +150,7 @@ def _build_ffmpeg_command(
         video_inputs.append(input_index)
         input_index += 1
 
+    audio_mix = []  # (indice de entrada, retardo en ms, ganancia)
     for clip in audio_clips:
         path = _resolve_source_url(clip.get("sourceUrl", ""))
         if not path:
@@ -158,6 +159,12 @@ def _build_ffmpeg_command(
         trim_in = clip.get("trimInSeconds", 0) or 0
         duration = _get_clip_duration(clip)
         input_args.extend(["-ss", str(trim_in), "-t", str(duration), "-i", str(path)])
+        # Olares patch: el inicio del clip y su ganancia se aplican en el filtro.
+        # Antes todos los audios entraban en el segundo 0 y amix los dividia por
+        # su numero, asi que una narracion por trozos sonaba a barullo.
+        start = float(clip.get("startTime", 0) or 0)
+        gain = float(clip.get("gain", 1.0) or 1.0)
+        audio_mix.append((input_index, max(0, int(round(start * 1000))), gain))
         audio_inputs.append(input_index)
         input_index += 1
 
@@ -181,13 +188,26 @@ def _build_ffmpeg_command(
     # Audio mixing
     audio_streams = []
     for i, idx in enumerate(audio_inputs):
-        filters.append(f"[{idx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a{i}]")
+        delay_ms, gain = 0, 1.0
+        for a_idx, a_delay, a_gain in audio_mix:
+            if a_idx == idx:
+                delay_ms, gain = a_delay, a_gain
+                break
+        cadena = f"[{idx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo"
+        if abs(gain - 1.0) > 1e-3:
+            cadena += f",volume={gain:.3f}"
+        if delay_ms > 0:
+            cadena += f",adelay={delay_ms}|{delay_ms}"
+        cadena += f"[a{i}]"
+        filters.append(cadena)
         audio_streams.append(f"[a{i}]")
 
     if audio_streams:
         if len(audio_streams) > 1:
             mix_inputs = "".join(audio_streams)
-            filters.append(f"{mix_inputs}amix=inputs={len(audio_streams)}:duration=longest[aout]")
+            filters.append(
+                f"{mix_inputs}amix=inputs={len(audio_streams)}:duration=longest:normalize=0,alimiter=limit=0.95[aout]"
+            )
         else:
             # Single audio stream — just relabel
             filters.append(f"{audio_streams[0]}anull[aout]")
