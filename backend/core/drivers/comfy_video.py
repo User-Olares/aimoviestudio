@@ -477,6 +477,19 @@ class ComfyVideoDriver(VideoDriver):
                     "4:3": (1024, 768),
                 }
                 dims = ar_map.get(request.aspect_ratio.value if request.aspect_ratio else "16:9", (1280, 720))
+                if ct in ("EmptyLTXVLatentVideo", "LTXVImgToVideo", "LTXVEmptyLatent"):
+                    # LTX 2.3 son 22B en fp8: 1280×720 no cabe en 24 GB (tumba la app).
+                    # Tope de 0,35 MP salvo que el usuario pase width/height explícitos.
+                    ep = request.extra_params or {}
+                    if ep.get("width") and ep.get("height"):
+                        dims = (int(ep["width"]), int(ep["height"]))
+                    else:
+                        cap = 0.35 * 1024 * 1024
+                        if dims[0] * dims[1] > cap:
+                            escala = (cap / (dims[0] * dims[1])) ** 0.5
+                            dims = (max(256, int(dims[0] * escala) // 32 * 32),
+                                    max(256, int(dims[1] * escala) // 32 * 32))
+                    print(f"[ComfyVideoDriver]   LTX resolución {dims[0]}x{dims[1]}")
                 inputs["width"] = dims[0]
                 inputs["height"] = dims[1]
                 fps = inputs.get("frame_rate", 24)
