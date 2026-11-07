@@ -467,7 +467,8 @@ class ComfyVideoDriver(VideoDriver):
                     inputs["noise_seed"] = int(time.time()) % (2**32)
 
             # --- Duration / frames (standard latent nodes) ---
-            if ct in ("EmptyLatentImage", "EmptyHunyuanLatentVideo", "LTXVEmptyLatent", "MinimaxH3EmptyLatent"):
+            if ct in ("EmptyLatentImage", "EmptyHunyuanLatentVideo", "LTXVEmptyLatent",
+                      "MinimaxH3EmptyLatent", "EmptyLTXVLatentVideo", "LTXVImgToVideo"):
                 ar_map = {
                     "16:9": (1280, 720),
                     "9:16": (720, 1280),
@@ -480,12 +481,31 @@ class ComfyVideoDriver(VideoDriver):
                 inputs["height"] = dims[1]
                 fps = inputs.get("frame_rate", 24)
                 total_frames = int(request.duration_seconds * fps)
+                if ct in ("EmptyLTXVLatentVideo", "LTXVImgToVideo", "LTXVEmptyLatent"):
+                    # LTX exige length = 8n + 1 (el VAE comprime 8 fotogramas)
+                    total_frames = ((max(9, total_frames) - 1) // 8) * 8 + 1
                 if "length" in inputs:
                     inputs["length"] = total_frames
                 if "num_frames" in inputs:
                     inputs["num_frames"] = total_frames
                 if "frames" in inputs:
                     inputs["frames"] = total_frames
+
+            # --- LTX 2.3: el latente de audio debe durar lo mismo que el vídeo ---
+            if ct == "LTXVEmptyLatentAudio":
+                fps = inputs.get("frame_rate", 24)
+                total = int(request.duration_seconds * fps)
+                total = ((max(9, total) - 1) // 8) * 8 + 1
+                if "frames_number" in inputs:
+                    inputs["frames_number"] = total
+                    print(f"[ComfyVideoDriver]   LTXVEmptyLatentAudio frames_number={total}")
+
+            # --- LTX 2.3: pasos del scheduler ---
+            if ct == "LTXVScheduler":
+                user_steps = request.extra_params.get("steps") if request.extra_params else None
+                if user_steps is not None and "steps" in inputs:
+                    inputs["steps"] = user_steps
+                    print(f"[ComfyVideoDriver]   user override: steps={user_steps} (LTXVScheduler)")
 
             # --- MiniMax H3: duration via PrimitiveFloat → ComfyMathExpression → length ---
             if ct == "PrimitiveFloat":
@@ -667,6 +687,34 @@ class ComfyVideoDriver(VideoDriver):
             return str(local)
         return None
 
+    async def _free_comfy(self, reason: str = "") -> None:
+        """Pide a ComfyUI que libere VRAM y RAM si no hay nada en la cola.
+
+        Con 24 GB de VRAM y varios modelos de 20+ GB, la memoria se acumula
+        entre trabajos hasta que la plataforma detiene la aplicación por falta
+        de memoria del sistema. Liberar al terminar cada trabajo lo evita.
+        """
+        if os.getenv("COMFY_FREE_AFTER_JOB", "1").lower() not in ("1", "true", "yes"):
+            return
+        try:
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with self._get_session() as session:
+                async with session.get(f"{self.comfy_url}/queue", timeout=timeout) as resp:
+                    if resp.status == 200:
+                        q = await resp.json()
+                        pendientes = len(q.get("queue_pending") or [])
+                        activos = len(q.get("queue_running") or [])
+                        if pendientes or activos:
+                            return
+                async with session.post(
+                    f"{self.comfy_url}/free",
+                    json={"unload_models": True, "free_memory": True},
+                    timeout=timeout,
+                ) as resp:
+                    print(f"[ComfyVideoDriver] /free ({reason}): HTTP {resp.status}", flush=True)
+        except Exception as e:
+            print(f"[ComfyVideoDriver] /free falló ({reason}): {e}", flush=True)
+
     async def generate(self, request: VideoGenerationRequest) -> VideoGenerationResponse:
         job_id = str(uuid.uuid4())
 
@@ -816,6 +864,7 @@ class ComfyVideoDriver(VideoDriver):
                             if video_urls:
                                 job["status"] = GenerationStatus.COMPLETED
                                 job["output_videos"] = video_urls
+                                await self._free_comfy("trabajo completado")
                                 return VideoGenerationResponse(
                                     job_id=job_id,
                                     status=GenerationStatus.COMPLETED,
