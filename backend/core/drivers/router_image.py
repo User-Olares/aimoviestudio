@@ -256,15 +256,16 @@ class RouterImageDriver(ImageDriver):
 
         rutas = []
         for ref in request.reference_image_paths[:4]:
-            fp = self._files_path(ref)
-            if not fp:
-                print(f"[RouterImageDriver]   no sé mapear {ref} a Files")
+            local = self._resolve_local(ref)
+            if not local:
+                print(f"[RouterImageDriver]   no encuentro {ref}")
                 continue
-            rutas.append(fp)
+            mime = mimetypes.guess_type(str(local))[0] or "image/png"
+            rutas.append(f"data:{mime};base64,{base64.b64encode(local.read_bytes()).decode()}")
         if rutas:
             body["inputs"] = {"images": rutas}
 
-        print(f"[RouterImageDriver] FlowStudio petición: {json.dumps(body)[:300]}")
+        print(f"[RouterImageDriver] FlowStudio petición: model={body['model']} prompt={body['prompt'][:60]} imgs={len(rutas)}")
         async with session.post(
             f"{self._api_base()}/generations", headers=self._headers(), json=body
         ) as resp:
