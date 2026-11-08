@@ -58,7 +58,7 @@ class RouterImageDriver(ImageDriver):
         },
         "router_vision": {
             "name": "GPT-4.1 visión (Router)",
-            "model": "openai/gpt-4.1",
+            "model": self._vision_model(),
         },
     }
 
@@ -245,6 +245,9 @@ class RouterImageDriver(ImageDriver):
 
     # --- visión: análisis de personaje ---------------------------------------
 
+    def _vision_model(self) -> str:
+        return os.getenv("ROUTER_VISION_MODEL") or self._settings().get("ROUTER_VISION_MODEL") or "openai/gpt-4.1-mini"
+
     async def analyze_character(self, image_path: str) -> ImageGenerationResponse:
         """Describe un personaje a partir de su imagen usando un modelo con visión."""
         job_id = str(uuid.uuid4())
@@ -258,7 +261,7 @@ class RouterImageDriver(ImageDriver):
         mime = mimetypes.guess_type(str(local))[0] or "image/png"
         b64 = base64.b64encode(local.read_bytes()).decode()
         body = {
-            "model": "openai/gpt-4.1",
+            "model": self._vision_model(),
             "messages": [
                 {
                     "role": "user",
@@ -291,7 +294,7 @@ class RouterImageDriver(ImageDriver):
             return ImageGenerationResponse(
                 job_id=job_id,
                 status=GenerationStatus.COMPLETED,
-                metadata={"description": text, "model": "openai/gpt-4.1"},
+                metadata={"description": text, "model": self._vision_model()},
             )
         except Exception as e:  # noqa: BLE001
             print(f"[RouterImageDriver] visión FALLÓ: {e}")
