@@ -58,7 +58,7 @@ class RouterImageDriver(ImageDriver):
         },
         "router_vision": {
             "name": "GPT-4.1 visión (Router)",
-            "model": self._vision_model(),
+            "model": "openai/gpt-4.1-mini",
         },
     }
 
