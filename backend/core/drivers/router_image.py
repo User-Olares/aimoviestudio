@@ -233,26 +233,38 @@ class RouterImageDriver(ImageDriver):
                 salida.append(guardada)
         return salida
 
+    def _files_path(self, ref: str) -> Optional[str]:
+        """Convierte una ruta del estudio en la dirección de Files que pide FlowStudio."""
+        prefijo = os.getenv("ASSETS_FILES_PATH") or "drive/Data/aimoviestudio/assets"
+        if ref.startswith("/assets/"):
+            return f"{prefijo}/{ref[len('/assets/'):]}"
+        if ref.startswith("drive/"):
+            return ref
+        return None
+
     async def _run_flowstudio(self, session, job_id: str, request) -> List[str]:
-        """Contrato de las escenas de FlowStudio: params + inputs, y sondeo."""
-        params = {"prompt": request.prompt}
-        extra = request.extra_params or {}
-        for clave in ("negative_prompt", "steps", "cfg", "seed"):
-            if extra.get(clave) is not None:
-                params[clave] = extra[clave]
+        """Contrato de las escenas: campos canónicos y la imagen como filesPath."""
+        body = {
+            "model": self._image_model(),
+            "prompt": request.prompt,
+            "n": max(1, min(4, request.num_images)),
+        }
+        if request.negative_prompt:
+            body["negative_prompt"] = request.negative_prompt
+        if request.seed is not None:
+            body["seed"] = request.seed
 
-        body = {"model": self._image_model(), "params": params}
-        refs = []
+        rutas = []
         for ref in request.reference_image_paths[:4]:
-            local = self._resolve_local(ref)
-            if not local:
-                print(f"[RouterImageDriver]   no encuentro {ref}")
+            fp = self._files_path(ref)
+            if not fp:
+                print(f"[RouterImageDriver]   no sé mapear {ref} a Files")
                 continue
-            mime = mimetypes.guess_type(str(local))[0] or "image/png"
-            refs.append(f"data:{mime};base64,{base64.b64encode(local.read_bytes()).decode()}")
-        if refs:
-            body["inputs"] = {"images": refs}
+            rutas.append(fp)
+        if rutas:
+            body["inputs"] = {"images": rutas}
 
+        print(f"[RouterImageDriver] FlowStudio petición: {json.dumps(body)[:300]}")
         async with session.post(
             f"{self._api_base()}/generations", headers=self._headers(), json=body
         ) as resp:
