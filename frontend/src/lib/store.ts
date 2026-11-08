@@ -151,7 +151,7 @@ export const useStudioStore = create<StudioState>((set, get) => ({
   imageDrivers: [],
   videoDrivers: [],
   audioDrivers: [],
-  selectedImageDriver: "qwen_image_edit",
+  selectedImageDriver: "image_auto",
   selectedVideoDriver: "minimax_h3",
   selectedAudioDriver: "fish_speech",
   selectedAssetId: null,

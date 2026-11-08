@@ -103,7 +103,7 @@ export function AssetDetailPanel({ projectId, asset }: Props) {
   const [charDescription, setCharDescription] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [drivers, setDrivers] = useState<DriverInfo[]>([]);
-  const [selectedDriver, setSelectedDriver] = useState<string>("qwen_image_edit");
+  const [selectedDriver, setSelectedDriver] = useState<string>("image_auto");
   const [progressViews, setProgressViews] = useState({ completed: 0, total: 0 });
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const isTurnaroundPro = asset.type === "character";
@@ -113,8 +113,12 @@ export function AssetDetailPanel({ projectId, asset }: Props) {
     getDrivers().then((data) => {
       const imageDrivers = data.image.filter((d) => d.supported_features.includes("image_to_image"));
       setDrivers(imageDrivers);
-      // Default to qwen_image_edit if available, otherwise first driver
-      if (!imageDrivers.find((d) => d.driver_id === "qwen_image_edit")) {
+      // Preferir GPT con respaldo local; si no está, Qwen edit; si no, el primero
+      if (imageDrivers.find((d) => d.driver_id === "image_auto")) {
+        setSelectedDriver("image_auto");
+      } else if (imageDrivers.find((d) => d.driver_id === "qwen_image_edit")) {
+        setSelectedDriver("qwen_image_edit");
+      } else {
         setSelectedDriver(imageDrivers[0]?.driver_id || "qwen_image_edit");
       }
     }).catch(() => {
@@ -126,7 +130,7 @@ export function AssetDetailPanel({ projectId, asset }: Props) {
   // Lock driver to ComfyUI when Turnaround Pro is selected
   useEffect(() => {
     if (isTurnaroundPro) {
-      setSelectedDriver("qwen_image_edit");
+      setSelectedDriver("image_auto");
     }
   }, [isTurnaroundPro]);
 

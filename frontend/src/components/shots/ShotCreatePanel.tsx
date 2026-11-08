@@ -304,7 +304,7 @@ export function ShotCreatePanel({
             drivers={imageDrivers}
             value={selectedImageDriver}
             onChange={setSelectedImageDriver}
-            filterFn={(d) => d.driver_id === "qwen_image_edit"}
+            filterFn={(d) => ["image_auto", "qwen_image_edit", "gpt_image"].includes(d.driver_id)}
             compact
           />
         </div>

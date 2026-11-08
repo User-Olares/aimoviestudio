@@ -1049,7 +1049,7 @@ export async function generateShotVariation(
       name,
       prompt,
       shot_type: shotType || "medium",
-      model_id: modelId || "qwen_image_edit",
+      model_id: modelId || "image_auto",
       negative_prompt: negativePrompt,
       seed,
     }),
