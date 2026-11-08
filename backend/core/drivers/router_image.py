@@ -108,11 +108,14 @@ class RouterImageDriver(ImageDriver):
         return os.getenv("ROUTER_API_KEY") or self._settings().get("ROUTER_API_KEY")
 
     def _image_model(self) -> str:
-        return (
-            os.getenv("ROUTER_IMAGE_MODEL")
-            or self._settings().get("ROUTER_IMAGE_MODEL")
-            or self._model
-        )
+        """La variable de entorno solo manda en las filas de nube, no en las locales."""
+        if self._model_id in ("gpt_image", "router_image"):
+            return (
+                os.getenv("ROUTER_IMAGE_MODEL")
+                or self._settings().get("ROUTER_IMAGE_MODEL")
+                or self._model
+            )
+        return self._model
 
     def _quality(self) -> str:
         """low | medium | high | auto — el coste por imagen va de 0,009 a 0,20 $."""
@@ -166,6 +169,155 @@ class RouterImageDriver(ImageDriver):
                     return self._store(job_id, index, await resp.read())
         return None
 
+    # --- variantes de contrato -----------------------------------------------
+
+    def _is_flowstudio(self) -> bool:
+        """Las filas locales de FlowStudio se direccionan como Olares/<uuid>."""
+        modelo = self._image_model()
+        return modelo.startswith("Olares/") or (len(modelo) == 36 and modelo.count("-") == 4)
+
+    async def _run_openai_generate(self, session, job_id: str, request, size: str) -> List[str]:
+        body = {
+            "model": self._image_model(),
+            "quality": self._quality(),
+            "prompt": request.prompt,
+            "size": size,
+            "n": max(1, min(4, request.num_images)),
+        }
+        async with session.post(
+            f"{self._api_base()}/images/generations", headers=self._headers(), json=body
+        ) as resp:
+            payload = await resp.json(content_type=None)
+            if resp.status >= 400:
+                raise RuntimeError(f"HTTP {resp.status}: {str(payload)[:300]}")
+        salida = []
+        for i, item in enumerate(payload.get("data") or []):
+            saved = await self._decode(session, item, job_id, i)
+            if saved:
+                salida.append(saved)
+        return salida
+
+    async def _run_openai_edit(self, session, job_id: str, request, size: str) -> List[str]:
+        form = aiohttp.FormData()
+        form.add_field("model", self._image_model())
+        form.add_field("quality", self._quality())
+        form.add_field("prompt", request.prompt)
+        form.add_field("size", size)
+        form.add_field("n", str(max(1, min(4, request.num_images))))
+        attached = 0
+        for ref in request.reference_image_paths[:4]:
+            local = self._resolve_local(ref)
+            if not local:
+                print(f"[RouterImageDriver]   no encuentro {ref}")
+                continue
+            mime = mimetypes.guess_type(str(local))[0] or "image/png"
+            form.add_field(
+                "image[]" if attached else "image",
+                local.read_bytes(),
+                filename=local.name,
+                content_type=mime,
+            )
+            attached += 1
+        if not attached:
+            raise RuntimeError("ninguna imagen de referencia se pudo leer")
+        async with session.post(
+            f"{self._api_base()}/images/edits", headers=self._headers(), data=form
+        ) as resp:
+            payload = await resp.json(content_type=None)
+            if resp.status >= 400:
+                raise RuntimeError(f"HTTP {resp.status}: {str(payload)[:300]}")
+        salida = []
+        for i, item in enumerate(payload.get("data") or []):
+            guardada = await self._decode(session, item, job_id, i)
+            if guardada:
+                salida.append(guardada)
+        return salida
+
+    async def _run_flowstudio(self, session, job_id: str, request) -> List[str]:
+        """Contrato de las escenas de FlowStudio: params + inputs, y sondeo."""
+        params = {"prompt": request.prompt}
+        extra = request.extra_params or {}
+        for clave in ("negative_prompt", "steps", "cfg", "seed"):
+            if extra.get(clave) is not None:
+                params[clave] = extra[clave]
+
+        body = {"model": self._image_model(), "params": params}
+        refs = []
+        for ref in request.reference_image_paths[:4]:
+            local = self._resolve_local(ref)
+            if not local:
+                print(f"[RouterImageDriver]   no encuentro {ref}")
+                continue
+            mime = mimetypes.guess_type(str(local))[0] or "image/png"
+            refs.append(f"data:{mime};base64,{base64.b64encode(local.read_bytes()).decode()}")
+        if refs:
+            body["inputs"] = {"images": refs}
+
+        async with session.post(
+            f"{self._api_base()}/generations", headers=self._headers(), json=body
+        ) as resp:
+            payload = await resp.json(content_type=None)
+            if resp.status >= 400:
+                raise RuntimeError(f"HTTP {resp.status}: {str(payload)[:400]}")
+        print(f"[RouterImageDriver] FlowStudio inicial: {str(payload)[:400]}")
+
+        gen_id = payload.get("id") or payload.get("generation_id") or payload.get("request_id")
+        estado = str(payload.get("status") or "").lower()
+        finales = {"succeeded", "completed", "success", "failed", "error", "cancelled", "canceled"}
+        intentos = 0
+        while gen_id and estado not in finales and intentos < 180:
+            await asyncio.sleep(4)
+            intentos += 1
+            url = f"{self._api_base()}/generations/{gen_id}"
+            async with session.get(url, headers=self._headers()) as resp:
+                if resp.status == 404:
+                    async with session.get(url + "/result", headers=self._headers()) as r2:
+                        if r2.status >= 400:
+                            continue
+                        payload = await r2.json(content_type=None)
+                else:
+                    payload = await resp.json(content_type=None)
+            estado = str(payload.get("status") or "").lower()
+            if intentos % 5 == 0:
+                print(f"[RouterImageDriver] sondeo {intentos}: {str(payload)[:220]}")
+
+        print(f"[RouterImageDriver] FlowStudio final: {str(payload)[:600]}")
+        if estado in ("failed", "error", "cancelled", "canceled"):
+            raise RuntimeError(f"la escena falló: {str(payload)[:200]}")
+
+        salida = []
+        for i, ref in enumerate(self._collect_refs(payload)):
+            async with session.get(ref, headers=self._headers()) as resp:
+                if resp.status == 200:
+                    salida.append(self._store(job_id, i, await resp.read()))
+                else:
+                    print(f"[RouterImageDriver] no pude bajar {ref[:80]}: HTTP {resp.status}")
+        return salida
+
+    @staticmethod
+    def _collect_refs(payload) -> List[str]:
+        """Busca en la respuesta cualquier referencia descargable a una imagen."""
+        encontrados: List[str] = []
+        vistos = set()
+
+        def visitar(nodo):
+            if isinstance(nodo, dict):
+                for clave, valor in nodo.items():
+                    if isinstance(valor, str) and clave in (
+                        "url", "file", "files_path", "path", "image", "image_url", "output"
+                    ):
+                        if valor.startswith("http") and valor not in vistos:
+                            vistos.add(valor)
+                            encontrados.append(valor)
+                    else:
+                        visitar(valor)
+            elif isinstance(nodo, list):
+                for item in nodo:
+                    visitar(item)
+
+        visitar(payload)
+        return encontrados
+
     # --- generación ----------------------------------------------------------
 
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResponse:
@@ -180,60 +332,17 @@ class RouterImageDriver(ImageDriver):
         try:
             job["status"] = GenerationStatus.PROCESSING
             size = self._size(request.width, request.height)
-            timeout = aiohttp.ClientTimeout(total=420)
+            timeout = aiohttp.ClientTimeout(total=900)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                if request.reference_image_paths:
-                    # Edición: multipart con la imagen de referencia
-                    form = aiohttp.FormData()
-                    form.add_field("model", self._image_model())
-                    form.add_field("quality", self._quality())
-                    form.add_field("prompt", request.prompt)
-                    form.add_field("size", size)
-                    form.add_field("n", str(max(1, min(4, request.num_images))))
-                    attached = 0
-                    for ref in request.reference_image_paths[:4]:
-                        local = self._resolve_local(ref)
-                        if not local:
-                            print(f"[RouterImageDriver]   no encuentro {ref}")
-                            continue
-                        mime = mimetypes.guess_type(str(local))[0] or "image/png"
-                        field = "image[]" if attached else "image"
-                        form.add_field(
-                            field,
-                            local.read_bytes(),
-                            filename=local.name,
-                            content_type=mime,
-                        )
-                        attached += 1
-                    if not attached:
-                        raise RuntimeError("ninguna imagen de referencia se pudo leer")
-                    url = f"{self._api_base()}/images/edits"
-                    async with session.post(url, headers=self._headers(), data=form) as resp:
-                        payload = await resp.json(content_type=None)
-                        if resp.status >= 400:
-                            raise RuntimeError(f"HTTP {resp.status}: {str(payload)[:300]}")
+                if self._is_flowstudio():
+                    images = await self._run_flowstudio(session, job_id, request)
+                elif request.reference_image_paths:
+                    images = await self._run_openai_edit(session, job_id, request, size)
                 else:
-                    body = {
-                        "model": self._image_model(),
-                        "quality": self._quality(),
-                        "prompt": request.prompt,
-                        "size": size,
-                        "n": max(1, min(4, request.num_images)),
-                    }
-                    url = f"{self._api_base()}/images/generations"
-                    async with session.post(url, headers=self._headers(), json=body) as resp:
-                        payload = await resp.json(content_type=None)
-                        if resp.status >= 400:
-                            raise RuntimeError(f"HTTP {resp.status}: {str(payload)[:300]}")
-
-                images: List[str] = []
-                for i, item in enumerate(payload.get("data") or []):
-                    saved = await self._decode(session, item, job_id, i)
-                    if saved:
-                        images.append(saved)
+                    images = await self._run_openai_generate(session, job_id, request, size)
 
             if not images:
-                raise RuntimeError(f"respuesta sin imágenes: {str(payload)[:200]}")
+                raise RuntimeError("la respuesta no trajo ninguna imagen")
 
             job["images"] = images
             job["status"] = GenerationStatus.COMPLETED
@@ -242,6 +351,7 @@ class RouterImageDriver(ImageDriver):
             job["status"] = GenerationStatus.FAILED
             job["error"] = str(e)
             print(f"[RouterImageDriver] FALLÓ: {e}")
+
 
     async def check_status(self, job_id: str) -> ImageGenerationResponse:
         job = self._jobs.get(job_id)

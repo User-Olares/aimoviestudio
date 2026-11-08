@@ -32,10 +32,10 @@ def get_image_driver(model_id: str) -> Optional[ImageDriver]:
             from .comfy_image import ComfyImageDriver
             from .fallback import FallbackImageDriver
             _comfy_image_cache[model_id] = FallbackImageDriver(
-                primary=RouterImageDriver(model_id="gpt_image"),
+                primary=RouterImageDriver(model_id="qwen_image_router"),
                 secondary=ComfyImageDriver(model_id="qwen_image_edit"),
                 model_id="image_auto",
-                name="GPT Image → Qwen local (respaldo)",
+                name="Qwen local · coste cero → ComfyUI (respaldo)",
             )
         return _comfy_image_cache[model_id]
     if model_id in ("qwen_image", "comfy_image", "z_image", "krea2", "flux2", "qwen_image_edit", "qwen_multiangle", "flux2_kontext"):
@@ -144,8 +144,8 @@ def list_image_drivers() -> List[DriverInfo]:
     # Router: primario en la nube con respaldo local
     drivers.append(DriverInfo(
         driver_id="image_auto",
-        display_name="GPT Image → Qwen local (respaldo)",
-        category=DriverCategory.CLOUD,
+        display_name="Qwen local · coste cero → ComfyUI (respaldo)",
+        category=DriverCategory.LOCAL,
         supported_features=["text_to_image", "image_to_image", "multi_reference"],
     ))
     drivers.append(DriverInfo(
@@ -156,7 +156,7 @@ def list_image_drivers() -> List[DriverInfo]:
     ))
     drivers.append(DriverInfo(
         driver_id="qwen_image_router",
-        display_name="Qwen-Image 2.1 Edit (Router)",
+        display_name="Qwen-Image 2.1 Edit · local (coste cero)",
         category=DriverCategory.CLOUD,
         supported_features=["text_to_image", "image_to_image", "multi_reference"],
     ))
