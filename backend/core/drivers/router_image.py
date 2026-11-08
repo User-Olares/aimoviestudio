@@ -45,12 +45,12 @@ class RouterImageDriver(ImageDriver):
 
     MODEL_INFO = {
         "gpt_image": {
-            "name": "GPT Image (Router)",
-            "model": "openai/chatgpt-image-latest",
+            "name": "GPT Image 2 (Router)",
+            "model": "openai/gpt-image-2",
         },
         "router_image": {
-            "name": "GPT Image (Router)",
-            "model": "openai/chatgpt-image-latest",
+            "name": "GPT Image 2 (Router)",
+            "model": "openai/gpt-image-2",
         },
         "qwen_image_router": {
             "name": "Qwen-Image 2.1 Edit (Router)",
@@ -107,6 +107,21 @@ class RouterImageDriver(ImageDriver):
     def _api_key(self) -> Optional[str]:
         return os.getenv("ROUTER_API_KEY") or self._settings().get("ROUTER_API_KEY")
 
+    def _image_model(self) -> str:
+        return (
+            os.getenv("ROUTER_IMAGE_MODEL")
+            or self._settings().get("ROUTER_IMAGE_MODEL")
+            or self._model
+        )
+
+    def _quality(self) -> str:
+        """low | medium | high | auto — el coste por imagen va de 0,009 a 0,20 $."""
+        return (
+            os.getenv("ROUTER_IMAGE_QUALITY")
+            or self._settings().get("ROUTER_IMAGE_QUALITY")
+            or "medium"
+        )
+
     def _headers(self) -> dict:
         key = self._api_key()
         if not key:
@@ -156,7 +171,7 @@ class RouterImageDriver(ImageDriver):
     async def generate(self, request: ImageGenerationRequest) -> ImageGenerationResponse:
         job_id = str(uuid.uuid4())
         self._jobs[job_id] = {"status": GenerationStatus.PENDING, "images": [], "error": None}
-        print(f"[RouterImageDriver] generate: model={self._model}, prompt={request.prompt[:80]}..., refs={len(request.reference_image_paths)}")
+        print(f"[RouterImageDriver] generate: model={self._image_model()} calidad={self._quality()}, prompt={request.prompt[:80]}..., refs={len(request.reference_image_paths)}")
         asyncio.create_task(self._run(job_id, request))
         return ImageGenerationResponse(job_id=job_id, status=GenerationStatus.PENDING)
 
@@ -170,7 +185,8 @@ class RouterImageDriver(ImageDriver):
                 if request.reference_image_paths:
                     # Edición: multipart con la imagen de referencia
                     form = aiohttp.FormData()
-                    form.add_field("model", self._model)
+                    form.add_field("model", self._image_model())
+                    form.add_field("quality", self._quality())
                     form.add_field("prompt", request.prompt)
                     form.add_field("size", size)
                     form.add_field("n", str(max(1, min(4, request.num_images))))
@@ -198,7 +214,8 @@ class RouterImageDriver(ImageDriver):
                             raise RuntimeError(f"HTTP {resp.status}: {str(payload)[:300]}")
                 else:
                     body = {
-                        "model": self._model,
+                        "model": self._image_model(),
+                        "quality": self._quality(),
                         "prompt": request.prompt,
                         "size": size,
                         "n": max(1, min(4, request.num_images)),
@@ -240,7 +257,7 @@ class RouterImageDriver(ImageDriver):
             image_paths=job["images"],
             image_urls=job["images"],
             error_message=job["error"],
-            metadata={"model": self._model, "provider": "router"},
+            metadata={"model": self._image_model(), "quality": self._quality(), "provider": "router"},
         )
 
     # --- visión: análisis de personaje ---------------------------------------
