@@ -20,6 +20,24 @@ _comfy_video_cache: Dict[str, object] = {}
 
 def get_image_driver(model_id: str) -> Optional[ImageDriver]:
     """Get an image generation driver by model ID."""
+    # Router (nube vía gateway) y el compuesto con respaldo local
+    if model_id in ("gpt_image", "router_image", "qwen_image_router"):
+        if model_id not in _comfy_image_cache:
+            from .router_image import RouterImageDriver
+            _comfy_image_cache[model_id] = RouterImageDriver(model_id=model_id)
+        return _comfy_image_cache[model_id]
+    if model_id == "image_auto":
+        if model_id not in _comfy_image_cache:
+            from .router_image import RouterImageDriver
+            from .comfy_image import ComfyImageDriver
+            from .fallback import FallbackImageDriver
+            _comfy_image_cache[model_id] = FallbackImageDriver(
+                primary=RouterImageDriver(model_id="gpt_image"),
+                secondary=ComfyImageDriver(model_id="qwen_image_edit"),
+                model_id="image_auto",
+                name="GPT Image → Qwen local (respaldo)",
+            )
+        return _comfy_image_cache[model_id]
     if model_id in ("qwen_image", "comfy_image", "z_image", "krea2", "flux2", "qwen_image_edit", "qwen_multiangle", "flux2_kontext"):
         if model_id not in _comfy_image_cache:
             from .comfy_image import ComfyImageDriver
@@ -123,6 +141,25 @@ def get_audio_driver(model_id: str = "fish_speech") -> Optional[AudioDriver]:
 def list_image_drivers() -> List[DriverInfo]:
     """List all available image drivers with their metadata."""
     drivers = []
+    # Router: primario en la nube con respaldo local
+    drivers.append(DriverInfo(
+        driver_id="image_auto",
+        display_name="GPT Image → Qwen local (respaldo)",
+        category=DriverCategory.CLOUD,
+        supported_features=["text_to_image", "image_to_image", "multi_reference"],
+    ))
+    drivers.append(DriverInfo(
+        driver_id="gpt_image",
+        display_name="GPT Image (Router)",
+        category=DriverCategory.CLOUD,
+        supported_features=["text_to_image", "image_to_image", "multi_reference"],
+    ))
+    drivers.append(DriverInfo(
+        driver_id="qwen_image_router",
+        display_name="Qwen-Image 2.1 Edit (Router)",
+        category=DriverCategory.CLOUD,
+        supported_features=["text_to_image", "image_to_image", "multi_reference"],
+    ))
     # Local - ComfyUI
     drivers.append(DriverInfo(
         driver_id="qwen_image",

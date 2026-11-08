@@ -20,6 +20,11 @@ WORKFLOWS_DIR = Path(__file__).parent.parent / "core" / "workflows"
 
 # Supported API key providers
 SUPPORTED_KEYS = {
+    "ROUTER_API_KEY": {
+        "label": "Router API Key",
+        "description": "Habilita GPT Image y modelos de visión a través del gateway Router de Olares",
+        "url": "https://router.ataillepierre.olares.com",
+    },
     "FAL_KEY": {
         "label": "Fal.ai API Key",
         "description": "Enables cloud image and video generation via Fal.ai",

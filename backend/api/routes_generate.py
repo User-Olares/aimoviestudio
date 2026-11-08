@@ -451,7 +451,7 @@ async def generate_turnaround_sheet(req: TurnaroundSheetRequest):
     if not asset.get("primary_image"):
         raise HTTPException(status_code=400, detail="Asset has no primary image to generate turnaround from")
 
-    driver = get_image_driver("qwen_image_edit")
+    driver = get_image_driver(os.getenv("ANALYZE_DRIVER", "qwen_image_edit"))
     if not driver:
         raise HTTPException(status_code=500, detail="ComfyUI image driver not available")
 
@@ -491,7 +491,7 @@ async def analyze_character(req: AnalyzeCharacterRequest):
     if not asset.get("primary_image"):
         raise HTTPException(status_code=400, detail="Asset has no primary image to analyze")
 
-    driver = get_image_driver("qwen_image_edit")
+    driver = get_image_driver(os.getenv("ANALYZE_DRIVER", "qwen_image_edit"))
     if not driver:
         raise HTTPException(status_code=500, detail="ComfyUI image driver not available")
 
@@ -507,7 +507,7 @@ async def analyze_character(req: AnalyzeCharacterRequest):
 @router.get("/analyze-status/{job_id}")
 async def check_analysis_status(job_id: str):
     """Check the status of a character analysis (VLM captioning) job."""
-    driver = get_image_driver("qwen_image_edit")
+    driver = get_image_driver(os.getenv("ANALYZE_DRIVER", "qwen_image_edit"))
     if not driver:
         raise HTTPException(status_code=500, detail="ComfyUI image driver not available")
 
