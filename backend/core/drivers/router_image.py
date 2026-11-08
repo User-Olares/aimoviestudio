@@ -313,13 +313,16 @@ class RouterImageDriver(ImageDriver):
         if estado in ("failed", "error", "cancelled", "canceled"):
             raise RuntimeError(f"la escena falló: {str(payload)[:200]}")
 
+        base = self._api_base()
+        raiz = base[:-3] if base.endswith("/v1") else base
         salida = []
         for i, ref in enumerate(self._collect_refs(payload)):
-            async with session.get(ref, headers=self._headers()) as resp:
+            url = ref if ref.startswith("http") else f"{raiz}{ref}"
+            async with session.get(url, headers=self._headers()) as resp:
                 if resp.status == 200:
                     salida.append(self._store(job_id, i, await resp.read()))
                 else:
-                    print(f"[RouterImageDriver] no pude bajar {ref[:80]}: HTTP {resp.status}")
+                    print(f"[RouterImageDriver] no pude bajar {url[:90]}: HTTP {resp.status}")
         return salida
 
     @staticmethod
@@ -332,9 +335,10 @@ class RouterImageDriver(ImageDriver):
             if isinstance(nodo, dict):
                 for clave, valor in nodo.items():
                     if isinstance(valor, str) and clave in (
-                        "url", "file", "files_path", "path", "image", "image_url", "output"
+                        "url", "file", "files_path", "path", "image", "image_url",
+                        "output", "content_url",
                     ):
-                        if valor.startswith("http") and valor not in vistos:
+                        if (valor.startswith("http") or valor.startswith("/")) and valor not in vistos:
                             vistos.add(valor)
                             encontrados.append(valor)
                     else:
