@@ -263,7 +263,16 @@ class RouterImageDriver(ImageDriver):
             mime = mimetypes.guess_type(str(local))[0] or "image/png"
             rutas.append(f"data:{mime};base64,{base64.b64encode(local.read_bytes()).decode()}")
         if rutas:
+            # Con imagen de entrada el gateway usa el contrato de la escena:
+            # los campos de la escena van en params y la imagen en inputs.
             body["inputs"] = {"images": rutas}
+            params = {"prompt": request.prompt}
+            extra = request.extra_params or {}
+            if extra.get("megapixels"):
+                params["megapixels"] = str(extra["megapixels"])
+            if request.negative_prompt:
+                params["negative_prompt"] = request.negative_prompt
+            body["params"] = params
 
         print(f"[RouterImageDriver] FlowStudio petición: model={body['model']} prompt={body['prompt'][:60]} imgs={len(rutas)}")
         async with session.post(
